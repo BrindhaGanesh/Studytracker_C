@@ -1,5 +1,5 @@
 public class StudyTask {
-    public string Name { get; set; }
+    public string? Name { get; set; }
     public double TargetHours { get; set; }
     public double SecondsSpent { get; set; }
     public DateTime? LastStarted { get; set; }
