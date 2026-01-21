@@ -1,22 +1,37 @@
 ﻿@page "/"
 @using Blazored.LocalStorage
+@using StudyTracker
 @inject ILocalStorageService LocalStorage
 
-<PageTitle>Study Tracker</PageTitle>
+<PageTitle>Daily Study Overview</PageTitle>
 
-<div class="dashboard">
-    @foreach (var task in MyTasks) {
-        <div class="task-card">
-            <h3>@task.Name (@task.TargetHours hrs)</h3>
-            <p>@task.TimeRemaining</p>
-            <div class="progress-bar">
-                <div style="width: @(task.Progress * 100)%"></div>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="text-primary">Study Dashboard</h1>
+        <button class="btn btn-outline-danger btn-sm" @onclick="ResetProgress">Clear All Progress</button>
+    </div>
+    
+    <div class="row">
+        @foreach (var task in MyTasks) {
+            <div class="col-md-6 mb-4">
+                <div class="card shadow-sm border-@(ActiveTask == task ? "primary" : "light")">
+                    <div class="card-body">
+                        <h3 class="card-title">@task.Name</h3>
+                        <p class="text-muted">Goal: @task.TargetHours hrs | <strong>@task.TimeRemaining</strong></p>
+                        
+                        <div class="progress mb-3" style="height: 15px;">
+                            <div class="progress-bar bg-success" style="width: @(Math.Min(task.Progress * 100, 100))%"></div>
+                        </div>
+
+                        <button class="btn @(ActiveTask == task ? "btn-danger" : "btn-primary") w-100" 
+                                @onclick="() => ToggleTimer(task)">
+                            @(ActiveTask == task ? "Stop Session" : "Start Session")
+                        </button>
+                    </div>
+                </div>
             </div>
-            <button @onclick="() => ToggleTimer(task)">
-                @(ActiveTask == task ? "Stop" : "Start")
-            </button>
-        </div>
-    }
+        }
+    </div>
 </div>
 
 @code {
@@ -28,19 +43,34 @@
     };
 
     private StudyTask? ActiveTask;
+    private DateTime? startTime;
 
     protected override async Task OnInitializedAsync() {
-        // Load saved data from browser memory
-        var saved = await LocalStorage.GetItemAsync<List<StudyTask>>("studyData");
-        if (saved != null) MyTasks = saved;
+        try {
+            var saved = await LocalStorage.GetItemAsync<List<StudyTask>>("studyData");
+            if (saved != null) MyTasks = saved;
+        } catch {
+            // Handled for first-time use
+        }
     }
 
     private async Task ToggleTimer(StudyTask task) {
         if (ActiveTask == task) {
-            ActiveTask = null; // Stop
+            if (startTime.HasValue) {
+                task.SecondsSpent += (DateTime.Now - startTime.Value).TotalSeconds;
+            }
+            ActiveTask = null;
+            startTime = null;
         } else {
-            ActiveTask = task; // Start
+            ActiveTask = task;
+            startTime = DateTime.Now;
         }
+        await LocalStorage.SetItemAsync("studyData", MyTasks);
+    }
+
+    private async Task ResetProgress() {
+        foreach(var t in MyTasks) t.SecondsSpent = 0;
+        ActiveTask = null;
         await LocalStorage.SetItemAsync("studyData", MyTasks);
     }
 }

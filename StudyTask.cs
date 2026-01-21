@@ -1,10 +1,22 @@
-public class StudyTask {
-    public string? Name { get; set; }
+namespace StudyTracker;
+
+public class StudyTask
+{
+    // 'required' ensures the name is never null
+    public required string Name { get; set; } 
     public double TargetHours { get; set; }
     public double SecondsSpent { get; set; }
-    public DateTime? LastStarted { get; set; }
-    
-    // Logic for the UI
-    public double Progress => (SecondsSpent / 3600) / TargetHours;
-    public string TimeRemaining => $"{Math.Max(0, TargetHours - (SecondsSpent / 3600)):F1} hrs left";
+
+    // Calculates 0.0 to 1.0 for the progress bar
+    public double Progress => TargetHours > 0 ? (SecondsSpent / 3600) / TargetHours : 0;
+
+    // Formats the text display for the card
+    public string TimeRemaining 
+    {
+        get 
+        {
+            double remaining = TargetHours - (SecondsSpent / 3600);
+            return remaining > 0 ? $"{remaining:F1} hrs left" : "Goal Reached!";
+        }
+    }
 }
