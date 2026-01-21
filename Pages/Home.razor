@@ -1,0 +1,46 @@
+﻿@page "/"
+@using Blazored.LocalStorage
+@inject ILocalStorageService LocalStorage
+
+<PageTitle>Study Tracker</PageTitle>
+
+<div class="dashboard">
+    @foreach (var task in MyTasks) {
+        <div class="task-card">
+            <h3>@task.Name (@task.TargetHours hrs)</h3>
+            <p>@task.TimeRemaining</p>
+            <div class="progress-bar">
+                <div style="width: @(task.Progress * 100)%"></div>
+            </div>
+            <button @onclick="() => ToggleTimer(task)">
+                @(ActiveTask == task ? "Stop" : "Start")
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    private List<StudyTask> MyTasks = new() {
+        new StudyTask { Name = "Job Apps", TargetHours = 3 },
+        new StudyTask { Name = "German", TargetHours = 2 },
+        new StudyTask { Name = "Machine Learning", TargetHours = 1.5 },
+        new StudyTask { Name = "LLM Lessons", TargetHours = 1.5 }
+    };
+
+    private StudyTask? ActiveTask;
+
+    protected override async Task OnInitializedAsync() {
+        // Load saved data from browser memory
+        var saved = await LocalStorage.GetItemAsync<List<StudyTask>>("studyData");
+        if (saved != null) MyTasks = saved;
+    }
+
+    private async Task ToggleTimer(StudyTask task) {
+        if (ActiveTask == task) {
+            ActiveTask = null; // Stop
+        } else {
+            ActiveTask = task; // Start
+        }
+        await LocalStorage.SetItemAsync("studyData", MyTasks);
+    }
+}

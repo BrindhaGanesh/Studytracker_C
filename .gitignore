@@ -1,0 +1,18 @@
+# .NET Build Folders
+[Bb]in/
+[Oo]bj/
+
+# IDE / Visual Studio / VS Code
+.vs/
+.vscode/
+*.user
+*.userosscache
+*.sln.doccache
+
+# Publish output
+release/
+publish/
+
+# OS generated files
+.DS_Store
+Thumbs.db
