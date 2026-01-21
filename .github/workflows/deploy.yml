@@ -1,0 +1,31 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy-to-github-pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x' 
+
+      - name: Publish app
+        run: dotnet publish StudyTracker.csproj -c Release -o release --nologo
+
+      - name: Change base-tag in index.html
+        run: sed -i 's/<base href="\/" \/>/<base href="\/Studytracker_C\/" \/>/g' release/wwwroot/index.html
+
+      - name: Add .nojekyll file
+        run: touch release/wwwroot/.nojekyll
+
+      - name: Upload to GitHub Pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: release/wwwroot
+          branch: gh-pages
