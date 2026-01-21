@@ -1,26 +1,80 @@
 ﻿@page "/"
 @using Blazored.LocalStorage
 @using StudyTracker
+@using System.Timers 
+@implements IDisposable
 @inject ILocalStorageService LocalStorage
 
-<PageTitle>Daily Study Overview</PageTitle>
+<PageTitle>Study Tracker</PageTitle>
 
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h1 class="text-primary">Study Dashboard</h1>
-        <button class="btn btn-outline-danger btn-sm" @onclick="ResetProgress">Clear All Progress</button>
+        <h1 class="text-primary mb-0">Study Dashboard</h1>
+        <div>
+            <button class="btn btn-outline-danger btn-sm" @onclick="ResetProgress">Clear All Progress</button>
+            <button class="btn btn-outline-success btn-sm ms-2" @onclick="ForceCompleteAll">Test 100% Goal</button>
+        </div>
     </div>
-    
+
+    <div class="card mb-4 shadow-sm border-0 bg-light">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="card-title mb-0">Overall Daily Progress</h5>
+                <span class="badge bg-primary">@((GetTotalLiveProgress() * 100).ToString("F0"))% Complete</span>
+            </div>
+            <div class="progress" style="height: 25px; border-radius: 12px;">
+                <div class="progress-bar progress-bar-striped progress-bar-animated bg-info" 
+                     role="progressbar" 
+                     style="width: @(Math.Min(GetTotalLiveProgress() * 100, 100))%">
+                     @GetTotalTimeFormatted()
+                </div>
+            </div>
+            <div class="d-flex justify-content-between mt-2 text-muted small">
+                <span>Total Study Time Across All Tasks</span>
+                <span>Daily Goal: @MyTasks.Sum(t => t.TargetHours)h</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm border-primary">
+        <div class="card-header bg-primary text-white font-weight-bold">Add New Study Goal</div>
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <input type="text" class="form-control" placeholder="Task Name (e.g. C# Practice)" @bind="newTaskName" />
+                </div>
+                <div class="col-md-4">
+                    <div class="input-group">
+                        <input type="number" step="0.1" class="form-control" @bind="newTaskHours" />
+                        <span class="input-group-text">Target Hours</span>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <button class="btn btn-success w-100" @onclick="AddTask">Add Task</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row">
         @foreach (var task in MyTasks) {
             <div class="col-md-6 mb-4">
-                <div class="card shadow-sm border-@(ActiveTask == task ? "primary" : "light")">
+                <div class="card shadow-sm border-@(ActiveTask == task ? "primary" : "light")" style="@(ActiveTask == task ? "border-width: 2px;" : "")">
                     <div class="card-body">
-                        <h3 class="card-title">@task.Name</h3>
-                        <p class="text-muted">Goal: @task.TargetHours hrs | <strong>@task.TimeRemaining</strong></p>
+                        <div class="d-flex justify-content-between align-items-start">
+                            <h3 class="card-title">@task.Name</h3>
+                            <button class="btn btn-outline-danger btn-sm border-0" @onclick="() => RemoveTask(task)">✖</button>
+                        </div>
+                        
+                        <p class="text-muted h5">
+                            Goal: @task.TargetHours hrs | 
+                            <strong class="@(ActiveTask == task ? "text-primary" : "")">
+                                @GetLiveRemainingTime(task)
+                            </strong>
+                        </p>
                         
                         <div class="progress mb-3" style="height: 15px;">
-                            <div class="progress-bar bg-success" style="width: @(Math.Min(task.Progress * 100, 100))%"></div>
+                            <div class="progress-bar bg-success" style="width: @(Math.Min(GetLiveProgress(task) * 100, 100))%"></div>
                         </div>
 
                         <button class="btn @(ActiveTask == task ? "btn-danger" : "btn-primary") w-100" 
@@ -35,23 +89,79 @@
 </div>
 
 @code {
-    private List<StudyTask> MyTasks = new() {
-        new StudyTask { Name = "Job Apps", TargetHours = 3 },
-        new StudyTask { Name = "German", TargetHours = 2 },
-        new StudyTask { Name = "Machine Learning", TargetHours = 1.5 },
-        new StudyTask { Name = "LLM Lessons", TargetHours = 1.5 }
-    };
-
+    private List<StudyTask> MyTasks = new();
+    private string newTaskName = "";
+    private double newTaskHours = 1.0;
     private StudyTask? ActiveTask;
     private DateTime? startTime;
+    private Timer? displayTimer;
 
     protected override async Task OnInitializedAsync() {
-        try {
-            var saved = await LocalStorage.GetItemAsync<List<StudyTask>>("studyData");
-            if (saved != null) MyTasks = saved;
-        } catch {
-            // Handled for first-time use
+        var saved = await LocalStorage.GetItemAsync<List<StudyTask>>("studyData");
+        if (saved != null) MyTasks = saved;
+
+        // UI Refresh Timer
+        displayTimer = new Timer(1000);
+        displayTimer.Elapsed += (sender, e) => InvokeAsync(StateHasChanged);
+        displayTimer.AutoReset = true;
+        displayTimer.Start();
+    }
+
+    // --- LOGIC FOR TOP SUMMARY BAR ---
+    private double GetTotalLiveProgress() {
+        double totalTargetSeconds = MyTasks.Sum(t => t.TargetHours) * 3600;
+        if (totalTargetSeconds == 0) return 0;
+
+        double totalSpentSeconds = MyTasks.Sum(t => t.SecondsSpent);
+        if (ActiveTask != null && startTime.HasValue) {
+            totalSpentSeconds += (DateTime.Now - startTime.Value).TotalSeconds;
         }
+        return totalSpentSeconds / totalTargetSeconds;
+    }
+
+    private string GetTotalTimeFormatted() {
+        double totalSpentSeconds = MyTasks.Sum(t => t.SecondsSpent);
+        if (ActiveTask != null && startTime.HasValue) {
+            totalSpentSeconds += (DateTime.Now - startTime.Value).TotalSeconds;
+        }
+        TimeSpan t = TimeSpan.FromSeconds(totalSpentSeconds);
+        return string.Format("{0}h {1}m {2}s Logged", (int)t.TotalHours, t.Minutes, t.Seconds);
+    }
+
+    // --- INDIVIDUAL TASK LOGIC ---
+    private string GetLiveRemainingTime(StudyTask task) {
+        double totalSecondsSpent = task.SecondsSpent;
+        if (ActiveTask == task && startTime.HasValue) {
+            totalSecondsSpent += (DateTime.Now - startTime.Value).TotalSeconds;
+        }
+        double remainingSeconds = (task.TargetHours * 3600) - totalSecondsSpent;
+        if (remainingSeconds <= 0) return "Goal Reached!";
+        TimeSpan t = TimeSpan.FromSeconds(remainingSeconds);
+        return string.Format("{0}h {1:D2}m {2:D2}s remaining", (int)t.TotalHours, t.Minutes, t.Seconds);
+    }
+
+    private double GetLiveProgress(StudyTask task) {
+        double totalSecondsSpent = task.SecondsSpent;
+        if (ActiveTask == task && startTime.HasValue) {
+            totalSecondsSpent += (DateTime.Now - startTime.Value).TotalSeconds;
+        }
+        return (totalSecondsSpent / 3600) / task.TargetHours;
+    }
+
+    // --- BUTTON ACTIONS ---
+    private async Task AddTask() {
+        if (!string.IsNullOrWhiteSpace(newTaskName) && newTaskHours > 0) {
+            MyTasks.Add(new StudyTask { Name = newTaskName, TargetHours = newTaskHours, SecondsSpent = 0 });
+            newTaskName = "";
+            newTaskHours = 1.0;
+            await SaveToLocalStorage();
+        }
+    }
+
+    private async Task RemoveTask(StudyTask task) {
+        if (ActiveTask == task) ActiveTask = null;
+        MyTasks.Remove(task);
+        await SaveToLocalStorage();
     }
 
     private async Task ToggleTimer(StudyTask task) {
@@ -62,15 +172,51 @@
             ActiveTask = null;
             startTime = null;
         } else {
+            if (ActiveTask != null && startTime.HasValue) {
+                ActiveTask.SecondsSpent += (DateTime.Now - startTime.Value).TotalSeconds;
+            }
             ActiveTask = task;
             startTime = DateTime.Now;
         }
-        await LocalStorage.SetItemAsync("studyData", MyTasks);
+        await SaveToLocalStorage();
     }
 
     private async Task ResetProgress() {
-        foreach(var t in MyTasks) t.SecondsSpent = 0;
         ActiveTask = null;
+        startTime = null;
+        foreach(var t in MyTasks) t.SecondsSpent = 0;
+        await SaveToLocalStorage();
+    }
+
+    private async Task ForceCompleteAll() {
+        ActiveTask = null;
+        startTime = null;
+        foreach (var t in MyTasks) t.SecondsSpent = t.TargetHours * 3600;
+        await SaveToLocalStorage();
+    }
+
+    // --- STORAGE & CALENDAR SYNC ---
+    private async Task SaveToLocalStorage() {
         await LocalStorage.SetItemAsync("studyData", MyTasks);
+        await UpdateHistory(); 
+    }
+
+    private async Task UpdateHistory() {
+        var currentProgress = GetTotalLiveProgress();
+        var history = await LocalStorage.GetItemAsync<List<DailyHistory>>("studyHistory") ?? new();
+        var today = DateTime.Now.Date;
+        var existingToday = history.FirstOrDefault(h => h.Date.Date == today);
+
+        if (existingToday != null) {
+            existingToday.ProgressPercentage = currentProgress;
+        } else {
+            history.Add(new DailyHistory { Date = today, ProgressPercentage = currentProgress });
+        }
+        await LocalStorage.SetItemAsync("studyHistory", history);
+    }
+
+    public void Dispose() {
+        displayTimer?.Stop();
+        displayTimer?.Dispose();
     }
 }

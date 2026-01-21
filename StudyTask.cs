@@ -20,3 +20,9 @@ public class StudyTask
         }
     }
 }
+
+public class DailyHistory
+{
+    public DateTime Date { get; set; }
+    public double ProgressPercentage { get; set; }
+}

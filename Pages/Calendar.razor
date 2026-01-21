@@ -1,0 +1,70 @@
+@page "/calendar"
+@using Blazored.LocalStorage
+@using StudyTracker
+@inject ILocalStorageService LocalStorage
+
+<PageTitle>Study Calendar</PageTitle>
+
+<div class="container mt-4">
+    <h1 class="mb-4 text-primary">Consistency Calendar</h1>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body">
+            <h5 class="card-title text-center mb-4">@DateTime.Now.ToString("MMMM yyyy")</h5>
+            
+            <div class="d-flex flex-wrap gap-2 justify-content-center">
+                @foreach (var day in DaysInMonth)
+                {
+                    var history = History.FirstOrDefault(h => h.Date.Date == day.Date);
+                    var colorClass = GetColorClass(history?.ProgressPercentage ?? 0);
+                    
+                    <div class="d-flex flex-column align-items-center justify-content-center border rounded @colorClass" 
+                         style="width: 60px; height: 60px; font-size: 0.8rem; position: relative;">
+                        <span class="fw-bold">@day.Day</span>
+                        
+                        @if (history?.ProgressPercentage >= 1.0)
+                        {
+                            <span class="position-absolute top-0 end-0 p-1">✅</span>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-4 d-flex justify-content-center gap-3">
+        <span class="badge bg-success">100% Goal</span>
+        <span class="badge bg-primary">50% Goal</span>
+        <span class="badge bg-warning text-dark">25% Goal</span>
+        <span class="badge bg-danger">0% / Incomplete</span>
+    </div>
+</div>
+
+@code {
+    private List<DailyHistory> History = new();
+    private List<DateTime> DaysInMonth = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Generate days for the current month
+        var now = DateTime.Now;
+        var daysCount = DateTime.DaysInMonth(now.Year, now.Month);
+        for (int i = 1; i <= daysCount; i++)
+        {
+            DaysInMonth.Add(new DateTime(now.Year, now.Month, i));
+        }
+
+        // Load history from LocalStorage
+        var savedHistory = await LocalStorage.GetItemAsync<List<DailyHistory>>("studyHistory");
+        if (savedHistory != null) History = savedHistory;
+    }
+
+    private string GetColorClass(double progress)
+    {
+        if (progress >= 1.0) return "bg-success text-white";  // Green
+        if (progress >= 0.5) return "bg-primary text-white";  // Blue
+        if (progress >= 0.25) return "bg-warning text-dark"; // Orange
+        if (progress > 0) return "bg-danger text-white";     // Red
+        return "bg-light text-muted";                        // Empty
+    }
+}
